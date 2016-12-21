@@ -1,4 +1,6 @@
 <?php
+require_once('fileReplacement.php');
+
 if (!current_user_can('upload_files'))
 	wp_die(__('You do not have permission to upload files.', 'enable-media-replace'));
 
@@ -12,7 +14,7 @@ function emr_delete_current_files($current_file) {
 
 	// Find path of current file
 	$current_path = substr($current_file, 0, (strrpos($current_file, "/")));
-	
+
 	// Check if old file exists first
 	if (file_exists($current_file)) {
 		// Now check for correct file permissions for old file
@@ -24,15 +26,15 @@ function emr_delete_current_files($current_file) {
 		else {
 			// File exists, but has wrong permissions. Let the user know.
 			printf(__('The file %1$s can not be deleted by the web server, most likely because the permissions on the file are wrong.', "enable-media-replace"), $current_file);
-			exit;	
+			exit;
 		}
 	}
-	
+
 	// Delete old resized versions if this was an image
 	$suffix = substr($current_file, (strlen($current_file)-4));
 	$prefix = substr($current_file, 0, (strlen($current_file)-4));
 	$imgAr = array(".png", ".gif", ".jpg");
-	if (in_array($suffix, $imgAr)) { 
+	if (in_array($suffix, $imgAr)) {
 		// It's a png/gif/jpg based on file name
 		// Get thumbnail filenames from metadata
 		$metadata = wp_get_attachment_metadata($_POST["ID"]);
@@ -75,20 +77,21 @@ $current_filename = basename($current_file);
 $replace_type = $_POST["replace_type"];
 // We have two types: replace / replace_and_search
 
-if (is_uploaded_file($_FILES["userfile"]["tmp_name"])) {
+$file = new FileReplacement;
+if ($file->is_specified()) {
+	// New method for validating that the uploaded file is allowed,
+	// using WP:s internal wp_check_filetype_and_ext() function.
+	$filedata = wp_check_filetype_and_ext($file->temp_name, $file->name);
 
-	// New method for validating that the uploaded file is allowed, using WP:s internal wp_check_filetype_and_ext() function.
-	$filedata = wp_check_filetype_and_ext($_FILES["userfile"]["tmp_name"], $_FILES["userfile"]["name"]);
-	
 	if ($filedata["ext"] == "") {
 		echo __("File type does not meet security guidelines. Try another.", 'enable-media-replace');
 		exit;
 	}
-	
-	$new_filename = $_FILES["userfile"]["name"];
-	$new_filesize = $_FILES["userfile"]["size"];
+
+	$new_filename = $file->name;
+	$new_filesize = $file->size;
 	$new_filetype = $filedata["type"];
-	
+
 	// save original file permissions
 	$original_file_perms = fileperms($current_file) & 0777;
 
@@ -99,7 +102,7 @@ if (is_uploaded_file($_FILES["userfile"]["tmp_name"])) {
 		emr_delete_current_files($current_file);
 
 		// Move new file to old location/name
-		move_uploaded_file($_FILES["userfile"]["tmp_name"], $current_file);
+		move_uploaded_file($file->temp_name, $current_file);
 
 		// Chmod new file to original file permissions
 		@chmod($current_file, $original_file_perms);
@@ -107,7 +110,7 @@ if (is_uploaded_file($_FILES["userfile"]["tmp_name"])) {
 		// Make thumb and/or update metadata
 		wp_update_attachment_metadata( (int) $_POST["ID"], wp_generate_attachment_metadata( (int) $_POST["ID"], $current_file ) );
 
-		// Trigger possible updates on CDN and other plugins 
+		// Trigger possible updates on CDN and other plugins
 		update_attached_file( (int) $_POST["ID"], $current_file);
 	} elseif ( 'replace_and_search' == $replace_type && apply_filters( 'emr_enable_replace_and_search', true ) ) {
 		// Replace file, replace file name, update meta data, replace links pointing to old file name
@@ -119,7 +122,7 @@ if (is_uploaded_file($_FILES["userfile"]["tmp_name"])) {
 
 		// Move new file to old location, new name
 		$new_file = $current_path . "/" . $new_filename;
-		move_uploaded_file($_FILES["userfile"]["tmp_name"], $new_file);
+		move_uploaded_file($file->temp_name, $new_file);
 
 		// Chmod new file to original file permissions
 		@chmod($current_file, $original_file_perms);
@@ -142,7 +145,7 @@ if (is_uploaded_file($_FILES["userfile"]["tmp_name"])) {
 			"SELECT meta_value FROM $postmeta_table_name WHERE meta_key = '_wp_attached_file' AND post_id = %d;",
 			(int) $_POST["ID"]
 		);
-		
+
 		$old_meta_name = $wpdb->get_row($sql, ARRAY_A);
 		$old_meta_name = $old_meta_name["meta_value"];
 
@@ -164,7 +167,7 @@ if (is_uploaded_file($_FILES["userfile"]["tmp_name"])) {
 		);
 
 		$rs = $wpdb->get_results($sql, ARRAY_A);
-		
+
 		foreach($rs AS $rows) {
 
 			// replace old guid with new guid
@@ -178,17 +181,17 @@ if (is_uploaded_file($_FILES["userfile"]["tmp_name"])) {
 
 			$wpdb->query($sql);
 		}
-		
-		// Trigger possible updates on CDN and other plugins 
+
+		// Trigger possible updates on CDN and other plugins
 		update_attached_file( (int) $_POST["ID"], $new_file);
 
 	}
 
 	$returnurl = get_bloginfo("wpurl") . "/wp-admin/post.php?post={$_POST["ID"]}&action=edit&message=1";
-	
+
 	// Execute hook actions - thanks rubious for the suggestion!
 	if (isset($new_guid)) { do_action("enable-media-replace-upload-done", ($new_guid ? $new_guid : $current_guid)); }
-	
+
 } else {
 	//TODO Better error handling when no file is selected.
 	//For now just go back to media management

@@ -49,6 +49,9 @@ $current_filename = substr($current_filename, (strrpos($current_filename, "/") +
 
 		<input type="file" name="userfile" />
 
+		<p><?php echo __("Or specify a URL to retrieve a file from", "enable-media-replace"); ?></p>
+		<input type="text" name="userurl" />
+
 		<?php do_action( 'emr_before_replace_type_options' ); ?>
 
 	<?php if ( apply_filters( 'emr_display_replace_type_options', true ) ) : ?>
