@@ -91,18 +91,33 @@ if ($file->is_specified()) {
 	$new_filename = $file->name;
 	$new_filesize = $file->size;
 	$new_filetype = $filedata["type"];
+	error_log(sprintf("New filetype = %s", $new_filetype));
+
+	if(!file_exists($file->temp_name)) {
+		echo __("Cannot find uploaded file '" . $file->temp_name . "'.", 'enable-media-replace');
+		exit;
+	}
 
 	// save original file permissions
-	$original_file_perms = fileperms($current_file) & 0777;
+	$file_exists = file_exists($current_file);
+	if ($file_exists) {
+		$original_file_perms = fileperms($current_file) & 0777;
+		emr_delete_current_files($current_file);
+	} else {
+		error_log("The current file '" . $current_file . "' to replace no longer exists on the server.");
+		$original_file_perms = 0777;
+	 }
 
 	if ($replace_type == "replace") {
+		error_log("Performing replace..");
 		// Drop-in replace and we don't even care if you uploaded something that is the wrong file-type.
 		// That's your own fault, because we warned you!
 
-		emr_delete_current_files($current_file);
-
 		// Move new file to old location/name
-		move_uploaded_file($file->temp_name, $current_file);
+		if(!rename($file->temp_name, $current_file)) {
+			echo __("Failed to move file '" . $file->temp_name . "' to '" . $current_file . "'");
+			exit;
+		}
 
 		// Chmod new file to original file permissions
 		@chmod($current_file, $original_file_perms);
@@ -113,16 +128,18 @@ if ($file->is_specified()) {
 		// Trigger possible updates on CDN and other plugins
 		update_attached_file( (int) $_POST["ID"], $current_file);
 	} elseif ( 'replace_and_search' == $replace_type && apply_filters( 'emr_enable_replace_and_search', true ) ) {
+		error_log("Performing replace_and_search..");
 		// Replace file, replace file name, update meta data, replace links pointing to old file name
 
-		emr_delete_current_files($current_file);
-
 		// Massage new filename to adhere to WordPress standards
-		$new_filename= wp_unique_filename( $current_path, $new_filename );
+		$new_filename = wp_unique_filename( $current_path, $new_filename );
 
 		// Move new file to old location, new name
 		$new_file = $current_path . "/" . $new_filename;
-		move_uploaded_file($file->temp_name, $new_file);
+		if(!rename($file->temp_name, $new_file)) {
+			echo __("Failed to move file '" . $file->temp_name . "' to '" . $new_file . "'");
+			exit;
+		}
 
 		// Chmod new file to original file permissions
 		@chmod($current_file, $original_file_perms);

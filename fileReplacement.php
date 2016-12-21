@@ -30,10 +30,11 @@ class FileReplacement {
 
     $url_parts = parse_url($url);
     $this->name = basename($url_parts['path']);
-    $this->temp_name = wp_tempnam();
+    $this->temp_name = wp_tempnam($this->name);
+    @chmod($this->temp_name, 0777);
 
     $data = file_get_contents($url);
-    $file = file_put_contents($this->temp_name, $data);
+    file_put_contents($this->temp_name, $data);
     $this->size = filesize($this->temp_name);
 
     return true;
